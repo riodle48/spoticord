@@ -1,13 +1,15 @@
 use serenity::all::*;
+use serenity::all::CreateCommand; // ⬅️ needed on 0.12
 use songbird::{input, SerenityInit};
 
-/// Registers the /tone slash command globally.
+/// Registers the /tone slash command globally (serenity 0.12 API).
 /// Call this once on startup (e.g., in your `Ready` event).
 pub async fn register_tone_cmd(ctx: &Context) {
-    if let Err(err) = Command::create_global_application_command(&ctx.http, |c| {
-        c.name("tone")
-            .description("Join your voice channel and play a short test tone")
-    })
+    if let Err(err) = Command::create_global_command(
+        &ctx.http,
+        CreateCommand::new("tone")
+            .description("Join your voice channel and play a short test tone"),
+    )
     .await
     {
         eprintln!("[/tone] failed to register: {err}");
@@ -100,7 +102,7 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     }
 
-    // Small public MP3 (avoids the `lavfi` args issue with sine). Needs ffmpeg in the container/host.
+    // Small public MP3 (avoids lavfi sine args issues). Needs ffmpeg in the container/host.
     let test_url = "https://file-examples.com/storage/fe9a7a0e9a8d3a198b1b0aa/2017/11/file_example_MP3_700KB.mp3";
 
     match input::ffmpeg(test_url) {
@@ -109,7 +111,7 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
                 let mut handler = call.lock().await;
                 handler.play_input(src);
 
-                // Optionally, leave after ~7 seconds so you don't linger in VC.
+                // Leave after ~7 seconds so you don't linger in VC.
                 {
                     let manager = manager.clone();
                     tokio::spawn(async move {
