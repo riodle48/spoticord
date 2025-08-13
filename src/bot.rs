@@ -3,12 +3,13 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use log::{debug, info};
 use poise::{serenity_prelude, Framework, FrameworkContext, FrameworkOptions};
-use serenity::all::{ActivityData, FullEvent, Interaction, Ready, ShardManager};
+use serenity::all::{ActivityData, FullEvent, Interaction, Ready, ShardManager, GuildId, Command};
 use spoticord_database::Database;
 use spoticord_session::manager::SessionManager;
 
 use crate::commands;
-use crate::commands::music::tone;
+// OPTIONAL: if you want /tone, uncomment the next line and keep tone.rs present
+// use crate::commands::music::tone;
 
 #[cfg(feature = "stats")]
 use spoticord_stats::StatsManager;
@@ -18,23 +19,22 @@ pub type FrameworkError<'a> = poise::FrameworkError<'a, Data, anyhow::Error>;
 
 type Data = SessionManager;
 
+/// === ONLY the OG commands you showed ===
 pub fn framework_opts() -> FrameworkOptions<Data, anyhow::Error> {
     poise::FrameworkOptions {
         commands: vec![
-            #[cfg(debug_assertions)]
-            commands::debug::ping(),
-            #[cfg(debug_assertions)]
-            commands::debug::token(),
             commands::core::help(),
-            commands::core::version(),
-            commands::core::rename(),
             commands::core::link(),
-            commands::core::unlink(),
             commands::music::join(),
             commands::music::disconnect(),
-            commands::music::stop(),
             commands::music::playing(),
-            commands::music::lyrics(),
+            // OPTIONAL extras you can re-enable:
+            // commands::core::version(),
+            // commands::core::rename(),
+            // commands::core::unlink(),
+            // commands::music::stop(),
+            // commands::music::lyrics(),
+            // commands::music::tone(), // only if you have a poise wrapper for it
         ],
         event_handler: |ctx, event, framework, data| Box::pin(event_handler(ctx, event, framework, data)),
         ..Default::default()
@@ -49,28 +49,27 @@ pub async fn setup(
 ) -> Result<Data> {
     info!("Successfully logged in as {}", ready.user.name);
 
-    // Register ALL Poise commands in one guild (instant) or globally (slower)
-    if let Ok(gid) = std::env::var("GUILD_ID").ok().and_then(|s| s.parse::<u64>().ok()) {
-        poise::builtins::register_in_guild(
-            ctx,
-            &framework.options().commands,
-            serenity::all::GuildId::new(gid),
-        ).await?;
-        info!("Registered Poise commands in guild {}", gid);
+    // ---- Register commands to your server instantly ----
+    let guild_id = GuildId::new(1070519778235658270); // your server ID
 
-        // Also add /tone to that guild (does NOT overwrite others)
-        tone::register_tone_guild(ctx, serenity::all::GuildId::new(gid)).await;
-    } else {
-        poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-        info!("Registered Poise commands globally (may take minutes)");
-        tone::register_tone_cmd(ctx).await; // global /tone
+    // one-time wipe (set WIPE_COMMANDS=1 in Railway to enable)
+    let do_wipe = std::env::var("WIPE_COMMANDS").ok().as_deref() == Some("1");
+    if do_wipe {
+        info!("Wiping ALL guild commands in {guild_id} …");
+        let _ = Command::set_guild_commands(&ctx.http, guild_id, vec![]).await;
     }
 
-    // Songbird handle
+    // register OG commands in that guild (instant)
+    poise::builtins::register_in_guild(ctx, &framework.options().commands, guild_id).await?;
+    info!("Re-registered commands in guild {guild_id}");
+
+    // OPTIONAL: if you kept a separate /tone (non-Poise), ensure it exists too
+    // tone::register_tone_guild(ctx, guild_id).await;
+
+    // ---- normal bot wiring ----
     let songbird = songbird::get(ctx)
         .await
         .ok_or_else(|| anyhow!("Songbird was not registered during setup"))?;
-
     let manager = SessionManager::new(songbird, database);
 
     #[cfg(feature = "stats")]
@@ -99,13 +98,14 @@ async fn event_handler(
             }
             ctx.set_activity(Some(ActivityData::listening(spoticord_config::MOTD)));
         }
+
+        // if you kept a standalone /tone (not Poise), route it here
         FullEvent::InteractionCreate { interaction } => {
-            if let Interaction::Command(cmd) = interaction {
-                if cmd.data.name == "tone" {
-                    tone::run_tone(ctx, cmd).await;
-                }
+            if let Interaction::Command(_cmd) = interaction {
+                // if _cmd.data.name == "tone" { tone::run_tone(ctx, _cmd).await; }
             }
         }
+
         _ => {}
     }
     Ok(())
