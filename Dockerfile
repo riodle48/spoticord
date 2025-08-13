@@ -32,8 +32,14 @@ FROM debian:bookworm-slim
 ARG TARGETPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM}
 
-RUN apt-get update && apt-get install -y ca-certificates libpq-dev && \
-    rm -rf /var/lib/apt/lists/*
+# ✅ Runtime deps for Discord voice + Postgres
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libpq5 \
+    libopus0 \
+    ffmpeg \
+    libsodium23 \
+ && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/x86_64 /tmp/x86_64
 COPY --from=builder /app/aarch64 /tmp/aarch64
@@ -47,4 +53,4 @@ RUN if [ "${TARGETPLATFORM}" = "linux/amd64" ]; then \
     fi && \
     rm -rvf /tmp/x86_64 /tmp/aarch64
 
-ENTRYPOINT ["/usr/local/bin/spoticord"]
+ENTRYPOINT ["/usr/local/bin/s]()
