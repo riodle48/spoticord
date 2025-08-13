@@ -14,7 +14,6 @@ pub async fn register_tone_cmd(ctx: &Context) {
 
 /// /tone: join VC, play tiny MP3 via ffmpeg, then leave.
 pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
-    // Respond immediately so Discord doesn't timeout
     let _ = cmd
         .create_response(
             &ctx.http,
@@ -26,7 +25,6 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         )
         .await;
 
-    // Must be in a guild
     let Some(guild_id) = cmd.guild_id else {
         let _ = cmd.create_followup(
             &ctx.http,
@@ -37,7 +35,6 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     };
 
-    // Guild from cache
     let Some(guild) = guild_id.to_guild_cached(&ctx.cache) else {
         let _ = cmd.create_followup(
             &ctx.http,
@@ -48,7 +45,6 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     };
 
-    // Caller’s voice channel
     let Some(vc) = guild.voice_states.get(&cmd.user.id).and_then(|vs| vs.channel_id) else {
         let _ = cmd.create_followup(
             &ctx.http,
@@ -59,7 +55,6 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     };
 
-    // Songbird manager (requires `.register_songbird()` when building the client)
     let Some(manager) = songbird::get(ctx).await.map(|m| m.clone()) else {
         let _ = cmd.create_followup(
             &ctx.http,
@@ -70,7 +65,6 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     };
 
-    // Join VC
     if let Err(e) = manager.join(guild_id, vc).await {
         let _ = cmd.create_followup(
             &ctx.http,
@@ -81,10 +75,10 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     }
 
-    // Tiny public MP3 (requires ffmpeg binary in PATH)
+    // Tiny public MP3 (requires ffmpeg binary available in the runtime)
     let test_url = "https://file-examples.com/storage/fe9a7a0e9a8d3a198b1b0aa/2017/11/file_example_MP3_700KB.mp3";
 
-    // ffmpeg helper from Songbird (non-async)
+    // On songbird 0.4.4 this is NOT async — no `.await`
     match songbird::input::ffmpeg(test_url) {
         Ok(src) => {
             if let Some(call) = manager.get(guild_id) {
