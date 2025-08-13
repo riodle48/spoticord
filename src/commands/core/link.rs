@@ -14,21 +14,26 @@ use crate::bot::{Context, FrameworkError};
 /// Link your Spotify account to Spoticord
 #[poise::command(slash_command, on_error = on_error)]
 pub async fn link(ctx: Context<'_>) -> Result<()> {
+    // ✅ ACK immediately so Discord doesn't show "The application did not respond"
+    ctx.defer_ephemeral().await?;
+
     let db = ctx.data().database();
     let user_id = ctx.author().id.to_string();
 
     if db.get_account(&user_id).await.optional()?.is_some() {
         ctx.send(
-                CreateReply::default().embed(
-                    CreateEmbed::new()
-                        .title("Spotify account already linked")
-                        .description("You already have a Spotify account linked.")
-                        .footer(CreateEmbedFooter::new(
-                            "If you are trying to re-link your account then please use /unlink first.",
-                        )).color(Colors::Info),
-                ).ephemeral(true),
+            CreateReply::default().embed(
+                CreateEmbed::new()
+                    .title("Spotify account already linked")
+                    .description("You already have a Spotify account linked.")
+                    .footer(CreateEmbedFooter::new(
+                        "If you are trying to re-link your account then please use /unlink first.",
+                    ))
+                    .color(Colors::Info),
             )
-            .await?;
+            .ephemeral(true),
+        )
+        .await?;
 
         return Ok(());
     };
