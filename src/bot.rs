@@ -8,7 +8,7 @@ use spoticord_database::Database;
 use spoticord_session::manager::SessionManager;
 
 use crate::commands;
-use crate::commands::music::tone; // tone module
+use crate::commands::music::tone;
 
 #[cfg(feature = "stats")]
 use spoticord_stats::StatsManager;
@@ -51,19 +51,25 @@ pub async fn setup(
 ) -> Result<Data> {
     info!("Successfully logged in as {}", ready.user.name);
 
-    #[cfg(debug_assertions)]
-    poise::builtins::register_in_guild(
-        ctx,
-        &framework.options().commands,
-        std::env::var("GUILD_ID")?.parse()?,
-    )
-    .await?;
+    // Register ALL Poise commands in your guild instantly
+    if let Ok(gid) = std::env::var("GUILD_ID").ok().and_then(|s| s.parse::<u64>().ok()) {
+        poise::builtins::register_in_guild(
+            ctx,
+            &framework.options().commands,
+            serenity::all::GuildId::new(gid),
+        )
+        .await?;
+        info!("Registered Poise commands in guild {}", gid);
+    } else {
+        poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+        info!("Registered Poise commands globally (may take a while to appear)");
+    }
 
-    #[cfg(not(debug_assertions))]
-    poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-
-    // Register /tone (global)
+    // Add /tone alongside existing commands
     tone::register_tone_cmd(ctx).await;
+    if let Ok(gid) = std::env::var("GUILD_ID").ok().and_then(|s| s.parse::<u64>().ok()) {
+        tone::register_tone_guild(ctx, serenity::all::GuildId::new(gid)).await;
+    }
 
     // Songbird handle
     let songbird = songbird::get(ctx)
@@ -101,19 +107,15 @@ async fn event_handler(
             }
             ctx.set_activity(Some(ActivityData::listening(spoticord_config::MOTD)));
         }
-
-        // Route /tone to handler
         FullEvent::InteractionCreate { interaction } => {
             if let Interaction::Command(cmd) = interaction {
                 if cmd.data.name == "tone" {
-                    let _ = crate::commands::music::tone::run_tone(ctx, cmd).await;
+                    tone::run_tone(ctx, cmd).await;
                 }
             }
         }
-
         _ => {}
     }
-
     Ok(())
 }
 
@@ -133,13 +135,11 @@ async fn background_loop(
                     debug!("Retrieving active sessions count for stats");
 
                     let mut count = 0;
-
                     for session in session_manager.get_all_sessions() {
                         if matches!(session.active().await, Ok(true)) {
                             count += 1;
                         }
                     }
-
                     if let Err(why) = stats_manager.set_active_count(count) {
                         error!("Failed to update active sessions: {why}");
                     } else {
@@ -147,16 +147,12 @@ async fn background_loop(
                     }
                 }
             }
-
             _ = tokio::signal::ctrl_c() => {
                 info!("Received interrupt signal, shutting down...");
-
                 session_manager.shutdown_all().await;
                 shard_manager.shutdown_all().await;
-
                 #[cfg(feature = "stats")]
                 stats_manager.set_active_count(0).ok();
-
                 break;
             }
         }
