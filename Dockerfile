@@ -5,7 +5,12 @@ FROM --platform=linux/amd64 rust:1.80.1-slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -yqq \
-    cmake gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libpq-dev curl bzip2
+    cmake \
+    gcc-aarch64-linux-gnu \
+    binutils-aarch64-linux-gnu \
+    libpq-dev \
+    curl \
+    bzip2
 
 ENV PGVER=16.4
 RUN curl -o postgresql.tar.bz2 https://ftp.postgresql.org/pub/source/v${PGVER}/postgresql-${PGVER}.tar.bz2 && \
@@ -32,7 +37,7 @@ FROM debian:bookworm-slim
 ARG TARGETPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM}
 
-# ✅ Runtime deps for Discord voice + Postgres
+# Runtime dependencies for Discord voice + Postgres
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libpq5 \
@@ -51,6 +56,7 @@ RUN if [ "${TARGETPLATFORM}" = "linux/amd64" ]; then \
     else \
       echo "Unsupported TARGETPLATFORM: ${TARGETPLATFORM}" && exit 1; \
     fi && \
+    chmod +x /usr/local/bin/spoticord && \
     rm -rvf /tmp/x86_64 /tmp/aarch64
 
-ENTRYPOINT ["/usr/local/bin/s]()
+ENTRYPOINT ["/usr/local/bin/spoticord"]
