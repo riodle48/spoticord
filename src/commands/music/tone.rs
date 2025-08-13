@@ -84,7 +84,7 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
     // Tiny public MP3 (requires ffmpeg binary in PATH)
     let test_url = "https://file-examples.com/storage/fe9a7a0e9a8d3a198b1b0aa/2017/11/file_example_MP3_700KB.mp3";
 
-    // ffmpeg helper from Songbird
+    // ffmpeg helper from Songbird (non-async)
     match songbird::input::ffmpeg(test_url) {
         Ok(src) => {
             if let Some(call) = manager.get(guild_id) {
