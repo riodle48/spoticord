@@ -43,7 +43,7 @@ serenity = { version = "0.12.2", default-features = false, features = [
   "client", "gateway", "model", "http", "cache", "rustls_backend"
 ] }
 
-# Use Songbird from git with ffmpeg helper available
+# ✅ Songbird from GitHub (with ffmpeg support)
 songbird = { git = "https://github.com/serenity-rs/songbird", features = ["ffmpeg"] }
 
 tokio    = { version = "1.41.1", features = ["full"] }
@@ -56,3 +56,4 @@ strip = true
 
 [workspace.package]
 version = "2.2.6"
+
