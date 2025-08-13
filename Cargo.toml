@@ -18,6 +18,9 @@ members = [
     "spoticord_utils",
     "spoticord_stats",
 ]
+# was: songbird = { version = "0.4.4", features = ["simd-json"] }
+songbird = { version = "0.4.4", features = ["simd-json", "ffmpeg"] }
+
 
 [features]
 default = ["stats"]
