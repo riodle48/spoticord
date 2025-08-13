@@ -1,27 +1,27 @@
-pub mod core;
-pub mod music;
+use crate::Context;
 
-// Uncomment if you want debug-only commands
-// pub mod debug;
+/// `/help` command
+pub fn help() -> poise::Command<crate::Data, anyhow::Error> {
+    poise::Command {
+        name: "help",
+        description: "Show help information about the bot",
+        category: None,
+        ..poise::builtins::help()
+    }
+}
 
-use poise::Command;
-
-/// Returns all commands for the bot
-pub fn all_commands() -> Vec<Command<crate::Data, anyhow::Error>> {
-    vec![
-        // ==== CORE ====
-        core::help(),
-        core::link(),
-        // core::version(),
-        // core::rename(),
-        // core::unlink(),
-
-        // ==== MUSIC ====
-        music::join(),
-        music::disconnect(),
-        music::playing(),
-        // music::stop(),
-        // music::lyrics(),
-        // music::tone(),
-    ]
+/// `/link` command
+pub fn link() -> poise::Command<crate::Data, anyhow::Error> {
+    poise::Command {
+        name: "link",
+        description: "Link your Spotify account to Spoticord",
+        category: None,
+        action: |ctx| {
+            Box::pin(async move {
+                ctx.say("Click here to link your Spotify account: https://spoticord.com/link").await?;
+                Ok(())
+            })
+        },
+        ..Default::default()
+    }
 }
