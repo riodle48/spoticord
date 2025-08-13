@@ -1,9 +1,12 @@
-// src/tone.rs
-use serenity::all::{self, *};
-use serenity::all::CreateCommand;
-use songbird::{input, SerenityInit};
+// src/commands/music/tone.rs
+use serenity::all::{
+    Command, CommandInteraction, Context, CreateCommand, CreateInteractionResponse,
+    CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
+};
+use songbird::input; // we'll call input::ffmpeg(...).await
+// (No need for SerenityInit import here)
 
-/// Register /tone globally using the batch API (serenity 0.12).
+/// Register /tone globally via the batch API (stable on serenity 0.12.2).
 pub async fn register_tone_cmd(ctx: &Context) {
     let cmds = vec![
         CreateCommand::new("tone")
@@ -15,31 +18,19 @@ pub async fn register_tone_cmd(ctx: &Context) {
     }
 }
 
-/// Optional: fast dev registration (instant on one guild).
-#[allow(dead_code)]
-pub async fn register_tone_guild_cmd(ctx: &Context, guild_id: GuildId) {
-    let cmds = vec![
-        CreateCommand::new("tone")
-            .description("Join your voice channel and play a short test tone"),
-    ];
-
-    if let Err(err) = Command::set_guild_commands(&ctx.http, guild_id, cmds).await {
-        eprintln!("[/tone] failed to register (guild): {err}");
-    }
-}
-
-/// /tone: joins your VC, plays a tiny MP3 via ffmpeg, then leaves.
-/// Requires: `.register_songbird()` on your client and `ffmpeg` in PATH.
+/// /tone: joins your VC, plays a tiny MP3 with ffmpeg, then leaves.
 pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
-    // Reply immediately so Discord won't show "did not respond"
-    let _ = cmd.create_response(
-        &ctx.http,
-        CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new()
-                .content("🎧 Joining and playing a short test tone...")
-                .ephemeral(true),
-        ),
-    ).await;
+    // Respond immediately so Discord doesn't show "did not respond"
+    let _ = cmd
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .content("🎧 Joining and playing a short test tone...")
+                    .ephemeral(true),
+            ),
+        )
+        .await;
 
     // Must be in a guild
     let Some(guild_id) = cmd.guild_id else {
@@ -63,7 +54,7 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     };
 
-    // User's VC
+    // Caller’s voice channel
     let Some(vc) = guild.voice_states.get(&cmd.user.id).and_then(|vs| vs.channel_id) else {
         let _ = cmd.create_followup(
             &ctx.http,
@@ -74,12 +65,12 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     };
 
-    // Songbird
+    // Songbird manager
     let Some(manager) = songbird::get(ctx).await.map(|m| m.clone()) else {
         let _ = cmd.create_followup(
             &ctx.http,
             CreateInteractionResponseFollowup::new()
-                .content("Voice client (Songbird) isn’t available. Did you call `.register_songbird()`?")
+                .content("Voice client (Songbird) isn’t available. Did you call `.register_songbird()` on the client?")
                 .ephemeral(true),
         ).await;
         return;
@@ -96,10 +87,10 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     }
 
-    // Simple public MP3 (needs ffmpeg in the container/host PATH)
+    // Simple public MP3; requires ffmpeg in PATH and the `ffmpeg` feature (enabled above).
     let test_url = "https://file-examples.com/storage/fe9a7a0e9a8d3a198b1b0aa/2017/11/file_example_MP3_700KB.mp3";
 
-    match input::ffmpeg(test_url) {
+    match input::ffmpeg(test_url).await {
         Ok(src) => {
             if let Some(call) = manager.get(guild_id) {
                 let mut handler = call.lock().await;
@@ -133,10 +124,9 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
             let _ = cmd.create_followup(
                 &ctx.http,
                 CreateInteractionResponseFollowup::new()
-                    .content(format!("ffmpeg failed to start (is ffmpeg installed?): {err}"))
+                    .content(format!("ffmpeg failed to start (is ffmpeg installed in the container?): {err}"))
                     .ephemeral(true),
             ).await;
         }
     }
 }
-
