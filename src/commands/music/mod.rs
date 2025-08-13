@@ -3,7 +3,7 @@ mod join;
 mod lyrics;
 mod playing;
 mod stop;
-mod tone;            // ➕ add this
+pub mod tone;            // ➕ add this
 
 pub use disconnect::*;
 pub use join::*;
