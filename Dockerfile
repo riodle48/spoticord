@@ -37,7 +37,7 @@ FROM debian:bookworm-slim
 ARG TARGETPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM}
 
-# Runtime dependencies for Discord voice + Postgres
+# Runtime dependencies for Discord voice + Postgres + audio
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libpq5 \
