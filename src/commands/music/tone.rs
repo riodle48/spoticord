@@ -1,7 +1,7 @@
 use serenity::all::{
     Command, CommandInteraction, Context, CreateCommand, CreateInteractionResponse,
     CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
-    GuildId, UserId,
+    GuildId, UserId, ChannelId,
 };
 
 pub async fn register_tone_cmd(ctx: &Context) {
@@ -29,12 +29,9 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     };
 
-    // ---- DO NOT HOLD CACHE GUARDS ACROSS AWAITS ----
-    // Extract just the channel id we need, then drop cache refs before any await.
+    // ----- avoid holding cache guards across awaits -----
     let caller_id: UserId = cmd.user.id;
-    let user_vc: Option<_> = user_voice_channel_from_cache(&ctx, guild_id, caller_id);
-
-    let Some(vc) = user_vc else {
+    let Some(vc) = user_voice_channel_from_cache(ctx, guild_id, caller_id) else {
         let _ = ephemeral_followup(ctx, cmd, "Join a voice channel first, then run /tone.").await;
         return;
     };
@@ -61,21 +58,19 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
     let _ = ephemeral_followup(ctx, cmd, "Joined. I will disconnect shortly (no audio).").await;
 }
 
-// Helper: read the caller's VC from cache WITHOUT holding a CacheRef across await.
+// Read the caller's VC from cache without holding a CacheRef across await.
 fn user_voice_channel_from_cache(
     ctx: &Context,
     guild_id: GuildId,
     user_id: UserId,
-) -> Option<serenity::all::ChannelId> {
-    // Take a snapshot of just the needed field, then drop the guard.
+) -> Option<ChannelId> {
     let voice_states = guild_id
         .to_guild_cached(&ctx.cache)
-        .map(|g| g.voice_states.clone())?; // clone to avoid holding the cache guard
-
+        .map(|g| g.voice_states.clone())?; // clone to drop cache guard
     voice_states.get(&user_id).and_then(|vs| vs.channel_id)
 }
 
-// Small helper to keep awaits localized and strings ASCII-safe.
+// Return () even though create_followup returns Message
 async fn ephemeral_followup(
     ctx: &Context,
     cmd: &CommandInteraction,
@@ -86,5 +81,7 @@ async fn ephemeral_followup(
         CreateInteractionResponseFollowup::new()
             .content(msg)
             .ephemeral(true),
-    ).await
+    )
+    .await
+    .map(|_| ())
 }
