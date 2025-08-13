@@ -4,13 +4,18 @@
 FROM --platform=linux/amd64 rust:1.80.1-slim AS builder
 WORKDIR /app
 
+# + git (needed for git deps) + set cargo to use git CLI
 RUN apt-get update && apt-get install -yqq \
+    git \
     cmake \
     gcc-aarch64-linux-gnu \
     binutils-aarch64-linux-gnu \
     libpq-dev \
     curl \
     bzip2
+
+# Avoid libgit2 auth issues when fetching git dependencies
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 ENV PGVER=16.4
 RUN curl -o postgresql.tar.bz2 https://ftp.postgresql.org/pub/source/v${PGVER}/postgresql-${PGVER}.tar.bz2 && \
