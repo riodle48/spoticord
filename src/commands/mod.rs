@@ -1,5 +1,4 @@
 pub mod core;
-pub mod music;
-pub mod tone; 
+pub mod music; 
 #[cfg(debug_assertions)]
 pub mod debug;
