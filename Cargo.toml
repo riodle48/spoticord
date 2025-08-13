@@ -38,13 +38,12 @@ env_logger = "0.11.5"
 log       = "0.4.22"
 poise     = "0.6.1"
 
-# Serenity 0.12 API
 serenity = { version = "0.12.2", default-features = false, features = [
   "client", "gateway", "model", "http", "cache", "rustls_backend"
 ] }
 
-# ✅ Songbird from GitHub (with ffmpeg support)
-songbird = { git = "https://github.com/serenity-rs/songbird", features = ["ffmpeg"] }
+# ✅ Songbird from GitHub, no feature flags
+songbird = { git = "https://github.com/serenity-rs/songbird" }
 
 tokio    = { version = "1.41.1", features = ["full"] }
 rustls   = { version = "0.23.16", features = ["aws-lc-rs"] }
@@ -56,4 +55,3 @@ strip = true
 
 [workspace.package]
 version = "2.2.6"
-
