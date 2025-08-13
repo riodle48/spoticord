@@ -3,11 +3,12 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use log::{debug, info};
 use poise::{serenity_prelude, Framework, FrameworkContext, FrameworkOptions};
-use serenity::all::{ActivityData, FullEvent, Ready, ShardManager};
+use serenity::all::{ActivityData, FullEvent, Interaction, Ready, ShardManager};
 use spoticord_database::Database;
 use spoticord_session::manager::SessionManager;
 
 use crate::commands;
+use crate::commands::music::tone; // ⬅️ add tone module
 
 #[cfg(feature = "stats")]
 use spoticord_stats::StatsManager;
@@ -50,6 +51,7 @@ pub async fn setup(
 ) -> Result<Data> {
     info!("Successfully logged in as {}", ready.user.name);
 
+    // Register existing Poise commands
     #[cfg(debug_assertions)]
     poise::builtins::register_in_guild(
         ctx,
@@ -61,6 +63,10 @@ pub async fn setup(
     #[cfg(not(debug_assertions))]
     poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 
+    // ⬇️ Register our standalone /tone slash command
+    tone::register_tone_cmd(ctx).await;
+
+    // Songbird handle
     let songbird = songbird::get(ctx)
         .await
         .ok_or_else(|| anyhow!("Songbird was not registered during setup"))?;
@@ -86,15 +92,27 @@ async fn event_handler(
     _framework: FrameworkContext<'_, Data, anyhow::Error>,
     _data: &Data,
 ) -> Result<()> {
-    if let FullEvent::Ready { data_about_bot } = event {
-        if let Some(shard) = data_about_bot.shard {
-            debug!(
-                "Shard {} logged in (total shards: {})",
-                shard.id.0, shard.total
-            );
+    match event {
+        FullEvent::Ready { data_about_bot } => {
+            if let Some(shard) = data_about_bot.shard {
+                debug!(
+                    "Shard {} logged in (total shards: {})",
+                    shard.id.0, shard.total
+                );
+            }
+            ctx.set_activity(Some(ActivityData::listening(spoticord_config::MOTD)));
         }
 
-        ctx.set_activity(Some(ActivityData::listening(spoticord_config::MOTD)));
+        // ⬇️ Route the /tone interaction to our handler
+        FullEvent::InteractionCreate { interaction } => {
+            if let Interaction::Command(cmd) = interaction {
+                if cmd.data.name == "tone" {
+                    tone::run_tone(ctx, cmd).await;
+                }
+            }
+        }
+
+        _ => {}
     }
 
     Ok(())
@@ -139,7 +157,6 @@ async fn background_loop(
 
                 #[cfg(feature = "stats")]
                 stats_manager.set_active_count(0).ok();
-
 
                 break;
             }
