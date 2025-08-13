@@ -1,87 +1,164 @@
-// src/commands/music/tone.rs
-use serenity::all::{
-    ChannelId, Command, CommandInteraction, Context, CreateCommand, CreateInteractionResponse,
-    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, GuildId, UserId,
-};
+use std::sync::Arc;
 
-pub async fn register_tone_cmd(ctx: &Context) {
-    let cmds = vec![CreateCommand::new("tone")
-        .description("Join your voice channel and run a quick test")];
-    let _ = Command::set_global_commands(&ctx.http, cmds).await;
+use anyhow::{anyhow, Result};
+use log::{debug, info};
+use poise::{serenity_prelude, Framework, FrameworkContext, FrameworkOptions};
+use serenity::all::{ActivityData, FullEvent, Interaction, Ready, ShardManager};
+use spoticord_database::Database;
+use spoticord_session::manager::SessionManager;
+
+use crate::commands;
+use crate::commands::music::tone; // tone module
+
+#[cfg(feature = "stats")]
+use spoticord_stats::StatsManager;
+
+pub type Context<'a> = poise::Context<'a, Data, anyhow::Error>;
+pub type FrameworkError<'a> = poise::FrameworkError<'a, Data, anyhow::Error>;
+
+type Data = SessionManager;
+
+pub fn framework_opts() -> FrameworkOptions<Data, anyhow::Error> {
+    poise::FrameworkOptions {
+        commands: vec![
+            #[cfg(debug_assertions)]
+            commands::debug::ping(),
+            #[cfg(debug_assertions)]
+            commands::debug::token(),
+            commands::core::help(),
+            commands::core::version(),
+            commands::core::rename(),
+            commands::core::link(),
+            commands::core::unlink(),
+            commands::music::join(),
+            commands::music::disconnect(),
+            commands::music::stop(),
+            commands::music::playing(),
+            commands::music::lyrics(),
+        ],
+        event_handler: |ctx, event, framework, data| {
+            Box::pin(event_handler(ctx, event, framework, data))
+        },
+        ..Default::default()
+    }
 }
 
-pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
-    // Acknowledge immediately
-    let _ = cmd
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .content("Joining your voice channel for a quick test (no audio).")
-                    .ephemeral(true),
-            ),
-        )
-        .await;
+pub async fn setup(
+    ctx: &serenity_prelude::Context,
+    ready: &Ready,
+    framework: &Framework<Data, anyhow::Error>,
+    database: Database,
+) -> Result<Data> {
+    info!("Successfully logged in as {}", ready.user.name);
 
-    // Must be in a guild
-    let Some(guild_id) = cmd.guild_id else {
-        let _ = ephemeral_followup(ctx, cmd, "Run this in a server while you are in a voice channel.").await;
-        return;
-    };
+    #[cfg(debug_assertions)]
+    poise::builtins::register_in_guild(
+        ctx,
+        &framework.options().commands,
+        std::env::var("GUILD_ID")?.parse()?,
+    )
+    .await?;
 
-    // Avoid holding cache guards across awaits
-    let caller_id: UserId = cmd.user.id;
-    let Some(vc) = user_voice_channel_from_cache(ctx, guild_id, caller_id) else {
-        let _ = ephemeral_followup(ctx, cmd, "Join a voice channel first, then run /tone.").await;
-        return;
-    };
+    #[cfg(not(debug_assertions))]
+    poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 
-    // Songbird manager
-    let Some(manager) = songbird::get(ctx).await.map(|m| m.clone()) else {
-        let _ = ephemeral_followup(ctx, cmd, "Songbird is not available. Did you call .register_songbird()?").await;
-        return;
-    };
+    // Register /tone (global)
+    tone::register_tone_cmd(ctx).await;
 
-    // Join VC
-    if let Err(e) = manager.join(guild_id, vc).await {
-        let _ = ephemeral_followup(ctx, cmd, &format!("Failed to join voice channel: {e}")).await;
-        return;
+    // Songbird handle
+    let songbird = songbird::get(ctx)
+        .await
+        .ok_or_else(|| anyhow!("Songbird was not registered during setup"))?;
+
+    let manager = SessionManager::new(songbird, database);
+
+    #[cfg(feature = "stats")]
+    let stats = StatsManager::new(spoticord_config::kv_url())?;
+
+    tokio::spawn(background_loop(
+        manager.clone(),
+        framework.shard_manager().clone(),
+        #[cfg(feature = "stats")]
+        stats,
+    ));
+
+    Ok(manager)
+}
+
+async fn event_handler(
+    ctx: &serenity_prelude::Context,
+    event: &FullEvent,
+    _framework: FrameworkContext<'_, Data, anyhow::Error>,
+    _data: &Data,
+) -> Result<()> {
+    match event {
+        FullEvent::Ready { data_about_bot } => {
+            if let Some(shard) = data_about_bot.shard {
+                debug!(
+                    "Shard {} logged in (total shards: {})",
+                    shard.id.0, shard.total
+                );
+            }
+            ctx.set_activity(Some(ActivityData::listening(spoticord_config::MOTD)));
+        }
+
+        // Route /tone to handler
+        FullEvent::InteractionCreate { interaction } => {
+            if let Interaction::Command(cmd) = interaction {
+                if cmd.data.name == "tone" {
+                    let _ = crate::commands::music::tone::run_tone(ctx, cmd).await;
+                }
+            }
+        }
+
+        _ => {}
     }
 
-    // Leave after ~7 seconds
-    let m2 = manager.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(7)).await;
-        let _ = m2.remove(guild_id).await;
-    });
-
-    let _ = ephemeral_followup(ctx, cmd, "Joined. I will disconnect shortly (no audio).").await;
+    Ok(())
 }
 
-// Read the caller's VC from cache without holding a CacheRef across await.
-fn user_voice_channel_from_cache(
-    ctx: &Context,
-    guild_id: GuildId,
-    user_id: UserId,
-) -> Option<ChannelId> {
-    let voice_states = guild_id
-        .to_guild_cached(&ctx.cache)
-        .map(|g| g.voice_states.clone())?; // clone to drop cache guard
-    voice_states.get(&user_id).and_then(|vs| vs.channel_id)
-}
+async fn background_loop(
+    session_manager: SessionManager,
+    shard_manager: Arc<ShardManager>,
+    #[cfg(feature = "stats")] mut stats_manager: spoticord_stats::StatsManager,
+) {
+    #[cfg(feature = "stats")]
+    use log::error;
 
-// Return () even though create_followup returns Message
-async fn ephemeral_followup(
-    ctx: &Context,
-    cmd: &CommandInteraction,
-    msg: &str,
-) -> serenity::Result<()> {
-    cmd.create_followup(
-        &ctx.http,
-        CreateInteractionResponseFollowup::new()
-            .content(msg)
-            .ephemeral(true),
-    )
-    .await
-    .map(|_| ())
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
+                #[cfg(feature = "stats")]
+                {
+                    debug!("Retrieving active sessions count for stats");
+
+                    let mut count = 0;
+
+                    for session in session_manager.get_all_sessions() {
+                        if matches!(session.active().await, Ok(true)) {
+                            count += 1;
+                        }
+                    }
+
+                    if let Err(why) = stats_manager.set_active_count(count) {
+                        error!("Failed to update active sessions: {why}");
+                    } else {
+                        debug!("Active session count set to: {count}");
+                    }
+                }
+            }
+
+            _ = tokio::signal::ctrl_c() => {
+                info!("Received interrupt signal, shutting down...");
+
+                session_manager.shutdown_all().await;
+                shard_manager.shutdown_all().await;
+
+                #[cfg(feature = "stats")]
+                stats_manager.set_active_count(0).ok();
+
+                break;
+            }
+        }
+    }
 }
