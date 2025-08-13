@@ -29,7 +29,7 @@ pub async fn run_tone(ctx: &Context, cmd: &CommandInteraction) {
         return;
     };
 
-    // ----- avoid holding cache guards across awaits -----
+    // Avoid holding cache guards across awaits
     let caller_id: UserId = cmd.user.id;
     let Some(vc) = user_voice_channel_from_cache(ctx, guild_id, caller_id) else {
         let _ = ephemeral_followup(ctx, cmd, "Join a voice channel first, then run /tone.").await;
