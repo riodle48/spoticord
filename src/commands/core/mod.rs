@@ -1,11 +1,7 @@
-mod help;
-mod link;
-mod rename;
-mod unlink;
-mod version;
+pub mod help;
+pub mod link;
+// optional ones if you want them later:
+// pub mod version;
+// pub mod rename;
+// pub mod unlink;
 
-pub use help::*;
-pub use link::*;
-pub use rename::*;
-pub use unlink::*;
-pub use version::*;
