@@ -42,10 +42,10 @@ serenity = { version = "0.12.2", default-features = false, features = [
   "client", "gateway", "model", "http", "cache", "rustls_backend"
 ] }
 
-# ✅ Updated Songbird with Symphonia decoder for MP3/OGG
-songbird = { version = "0.4.4", features = ["simd-json", "symphonia"] }
+# ✅ Bump Songbird and remove unsupported features
+songbird = { version = "0.4.6", features = ["simd-json"] }
 
-# ✅ Needed for Restartable::new_http playback
+# Keep if you use Restartable::new_http or make web calls
 reqwest  = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 tokio  = { version = "1.41.1", features = ["full"] }
