@@ -42,8 +42,11 @@ serenity = { version = "0.12.2", default-features = false, features = [
   "client", "gateway", "model", "http", "cache", "rustls_backend"
 ] }
 
-# Songbird pinned to 0.4.4 (works with serenity 0.12). No ffmpeg helper used here.
-songbird = { version = "0.4.4", features = ["simd-json"] }
+# ✅ Updated Songbird with Symphonia decoder for MP3/OGG
+songbird = { version = "0.4.4", features = ["simd-json", "symphonia"] }
+
+# ✅ Needed for Restartable::new_http playback
+reqwest  = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 tokio  = { version = "1.41.1", features = ["full"] }
 rustls = { version = "0.23.16", features = ["aws-lc-rs"] }
