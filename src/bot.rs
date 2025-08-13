@@ -36,9 +36,7 @@ pub fn framework_opts() -> FrameworkOptions<Data, anyhow::Error> {
             commands::music::playing(),
             commands::music::lyrics(),
         ],
-        event_handler: |ctx, event, framework, data| {
-            Box::pin(event_handler(ctx, event, framework, data))
-        },
+        event_handler: |ctx, event, framework, data| Box::pin(event_handler(ctx, event, framework, data)),
         ..Default::default()
     }
 }
@@ -51,24 +49,21 @@ pub async fn setup(
 ) -> Result<Data> {
     info!("Successfully logged in as {}", ready.user.name);
 
-    // Register ALL Poise commands in your guild instantly
+    // Register ALL Poise commands in one guild (instant) or globally (slower)
     if let Ok(gid) = std::env::var("GUILD_ID").ok().and_then(|s| s.parse::<u64>().ok()) {
         poise::builtins::register_in_guild(
             ctx,
             &framework.options().commands,
             serenity::all::GuildId::new(gid),
-        )
-        .await?;
+        ).await?;
         info!("Registered Poise commands in guild {}", gid);
+
+        // Also add /tone to that guild (does NOT overwrite others)
+        tone::register_tone_guild(ctx, serenity::all::GuildId::new(gid)).await;
     } else {
         poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-        info!("Registered Poise commands globally (may take a while to appear)");
-    }
-
-    // Add /tone alongside existing commands
-    tone::register_tone_cmd(ctx).await;
-    if let Ok(gid) = std::env::var("GUILD_ID").ok().and_then(|s| s.parse::<u64>().ok()) {
-        tone::register_tone_guild(ctx, serenity::all::GuildId::new(gid)).await;
+        info!("Registered Poise commands globally (may take minutes)");
+        tone::register_tone_cmd(ctx).await; // global /tone
     }
 
     // Songbird handle
@@ -100,10 +95,7 @@ async fn event_handler(
     match event {
         FullEvent::Ready { data_about_bot } => {
             if let Some(shard) = data_about_bot.shard {
-                debug!(
-                    "Shard {} logged in (total shards: {})",
-                    shard.id.0, shard.total
-                );
+                debug!("Shard {} logged in (total shards: {})", shard.id.0, shard.total);
             }
             ctx.set_activity(Some(ActivityData::listening(spoticord_config::MOTD)));
         }
@@ -132,27 +124,20 @@ async fn background_loop(
             _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
                 #[cfg(feature = "stats")]
                 {
-                    debug!("Retrieving active sessions count for stats");
-
                     let mut count = 0;
                     for session in session_manager.get_all_sessions() {
-                        if matches!(session.active().await, Ok(true)) {
-                            count += 1;
-                        }
+                        if matches!(session.active().await, Ok(true)) { count += 1; }
                     }
                     if let Err(why) = stats_manager.set_active_count(count) {
                         error!("Failed to update active sessions: {why}");
-                    } else {
-                        debug!("Active session count set to: {count}");
                     }
                 }
             }
             _ = tokio::signal::ctrl_c() => {
-                info!("Received interrupt signal, shutting down...");
                 session_manager.shutdown_all().await;
                 shard_manager.shutdown_all().await;
                 #[cfg(feature = "stats")]
-                stats_manager.set_active_count(0).ok();
+                let _ = stats_manager.set_active_count(0);
                 break;
             }
         }
