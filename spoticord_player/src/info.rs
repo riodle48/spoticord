@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use librespot::{
-    core::SpotifyId,
+    core::{SpotifyId, SpotifyUri},
     metadata::{
         artist::ArtistsWithRole,
         audio::{AudioItem, UniqueFields},
@@ -28,15 +28,18 @@ impl PlaybackInfo {
         }
     }
 
-    pub fn track_id(&self) -> SpotifyId {
-        self.audio_item.track_id
+    pub fn track_id(&self) -> Option<SpotifyId> {
+        match &self.audio_item.track_id {
+            SpotifyUri::Track { id } | SpotifyUri::Episode { id } => Some(*id),
+            _ => None,
+        }
     }
 
     pub fn track_id_string(&self) -> String {
         self.audio_item
             .track_id
-            .to_base62()
-            .expect("invalid spotify id")
+            .to_id()
+            .unwrap_or_else(|_| self.audio_item.uri.clone())
     }
 
     pub fn name(&self) -> String {
@@ -46,13 +49,13 @@ impl PlaybackInfo {
     pub fn artists(&self) -> Option<ArtistsWithRole> {
         let artists = match &self.audio_item.unique_fields {
             UniqueFields::Track { artists, .. } => artists.clone().0,
-            UniqueFields::Episode { .. } => None?,
+            UniqueFields::Episode { .. } | UniqueFields::Local { .. } => None?,
         };
 
         let mut seen = HashSet::new();
         let artists = artists
             .into_iter()
-            .filter(|item| seen.insert(item.id))
+            .filter(|item| seen.insert(item.id.clone()))
             .collect();
 
         Some(ArtistsWithRole(artists))
@@ -61,7 +64,7 @@ impl PlaybackInfo {
     pub fn show_name(&self) -> Option<String> {
         match &self.audio_item.unique_fields {
             UniqueFields::Episode { show_name, .. } => Some(show_name.to_string()),
-            UniqueFields::Track { .. } => None,
+            UniqueFields::Track { .. } | UniqueFields::Local { .. } => None,
         }
     }
 
@@ -69,6 +72,7 @@ impl PlaybackInfo {
         match &self.audio_item.unique_fields {
             UniqueFields::Episode { .. } => None,
             UniqueFields::Track { album, .. } => Some(album.to_string()),
+            UniqueFields::Local { album, .. } => album.clone(),
         }
     }
 
@@ -94,6 +98,7 @@ impl PlaybackInfo {
             UniqueFields::Track { .. } => {
                 format!("https://open.spotify.com/track/{}", self.track_id_string())
             }
+            UniqueFields::Local { .. } => self.audio_item.uri.clone(),
         }
     }
 

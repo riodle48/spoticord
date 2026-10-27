@@ -3,10 +3,9 @@ pub mod info;
 use anyhow::Result;
 use info::PlaybackInfo;
 use librespot::{
-    connect::{config::ConnectConfig, spirc::Spirc},
+    connect::{ConnectConfig, Spirc},
     core::{
-        connection::AuthenticationError, http_client::HttpClientError, Session as SpotifySession,
-        SessionConfig,
+        error::ErrorKind, http_client::HttpClientError, Session as SpotifySession, SessionConfig,
     },
     discovery::Credentials,
     metadata::Lyrics,
@@ -93,7 +92,7 @@ impl Player {
         let mixer = (mixer::find(Some("softvol")).expect("missing softvol mixer"))(MixerConfig {
             volume_ctrl: VolumeCtrl::Log(VolumeCtrl::DEFAULT_DB_RANGE),
             ..Default::default()
-        });
+        })?;
 
         let (tx_sink, rx_sink) = mpsc::unbounded_channel();
         let player = SpotifyPlayer::new(
@@ -118,7 +117,7 @@ impl Player {
             match Spirc::new(
                 ConnectConfig {
                     name: device_name.clone(),
-                    initial_volume: Some((0.75f32 * u16::MAX as f32) as u16),
+                    initial_volume: (0.75f32 * u16::MAX as f32) as u16,
                     ..Default::default()
                 },
                 session.clone(),
@@ -131,12 +130,7 @@ impl Player {
                 Ok(spirc) => break spirc,
                 Err(why) => {
                     // Instantly return if our credentials have expired
-                    if let Some(AuthenticationError::LoginFailed(
-                        librespot::protocol::keyexchange::ErrorCode::BadCredentials,
-                    )) = why
-                        .error
-                        .downcast_ref::<librespot::core::connection::AuthenticationError>()
-                    {
+                    if why.kind == ErrorKind::PermissionDenied {
                         return Err(why);
                     }
 
@@ -300,7 +294,12 @@ impl Player {
             return;
         };
 
-        let lyrics = match Lyrics::get(&self.session, &playback_info.track_id()).await {
+        let Some(track_id) = playback_info.track_id() else {
+            _ = tx.send(None);
+            return;
+        };
+
+        let lyrics = match Lyrics::get(&self.session, &track_id).await {
             Ok(lyrics) => lyrics,
             Err(why) => {
                 // Ignore 404 errors
