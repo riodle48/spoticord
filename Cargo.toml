@@ -42,6 +42,11 @@ songbird = "0.6.1"
 tokio = { version = "1.41.1", features = ["full"] }
 rustls = { version = "0.23.16", features = ["aws-lc-rs"] }
 
+# librespot's login5 only issues tokens for Spotify's own client IDs; this vendored copy of
+# librespot-core adds `Login5Manager::set_token_provider` so we can use our own OAuth tokens.
+[patch.crates-io]
+librespot-core = { path = "vendor/librespot-core" }
+
 [profile.release]
 opt-level = 3
 lto = true
