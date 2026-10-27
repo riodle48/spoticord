@@ -84,7 +84,8 @@ impl Player {
         call: Arc<Mutex<Call>>,
         device_name: impl Into<String>,
         token_provider: TokenProvider,
-    ) -> Result<(PlayerHandle, mpsc::Receiver<PlayerEvent>, Vec<u8>), librespot::core::Error> {
+    ) -> Result<(PlayerHandle, mpsc::Receiver<PlayerEvent>, Vec<u8>, String), librespot::core::Error>
+    {
         let (event_tx, event_rx) = mpsc::channel(16);
 
         let mut call_lock = call.lock().await;
@@ -192,6 +193,7 @@ impl Player {
 
         // Keep auth data to reuse later for faster reconnections and less authentication requests to Spotify
         let auth_data = session.auth_data();
+        let username = session.username();
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel(16);
@@ -223,7 +225,7 @@ impl Player {
         });
         tokio::spawn(player.run());
 
-        Ok((PlayerHandle { commands: tx }, event_rx, auth_data))
+        Ok((PlayerHandle { commands: tx }, event_rx, auth_data, username))
     }
 
     async fn run(mut self) {
