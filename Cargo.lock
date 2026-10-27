@@ -5031,6 +5031,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "diesel_async_migrations",
+ "log",
  "rand 0.8.5",
  "rspotify",
  "spoticord_config",
