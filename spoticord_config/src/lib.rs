@@ -35,6 +35,12 @@ pub fn kv_url() -> &'static str {
     &env::KV_URL
 }
 
+/// The Spotify application client ID. librespot must log in with the same client ID
+/// that issued the user's access tokens, otherwise login5 rejects it with INVALID_CREDENTIALS.
+pub fn spotify_client_id() -> &'static str {
+    &env::SPOTIFY_CLIENT_ID
+}
+
 pub fn get_spotify(token: Token) -> AuthCodeSpotify {
     AuthCodeSpotify::from_token_with_config(
         token,
