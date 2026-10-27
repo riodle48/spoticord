@@ -20,7 +20,8 @@ use serenity::{
     async_trait,
 };
 use songbird::{model::payload::ClientDisconnect, Call, CoreEvent, Event, EventContext};
-use spoticord_player::{Player, PlayerEvent, PlayerHandle};
+use spoticord_database::Database;
+use spoticord_player::{Player, PlayerEvent, PlayerHandle, TokenProvider};
 use spoticord_utils::discord::Colors;
 use std::{ops::ControlFlow, sync::Arc, time::Duration};
 use tokio::{
@@ -117,6 +118,8 @@ impl Session {
             .await?
             .device_name;
 
+        let token_provider = make_token_provider(session_manager.database().clone(), &account.user_id);
+
         let credentials = match account
             .session_token
             .and_then(|val| BASE64.decode(&val).ok())
@@ -160,7 +163,7 @@ impl Session {
         }
 
         let (player, events, auth_data) =
-            match Player::create(credentials, call.clone(), device_name).await {
+            match Player::create(credentials, call.clone(), device_name, token_provider).await {
                 Ok(player) => player,
                 Err(why) => {
                     // Leave call on error, otherwise bot will be stuck in call forever until manually disconnected or taken over
@@ -425,6 +428,9 @@ impl Session {
             .await?
             .device_name;
 
+        let token_provider =
+            make_token_provider(self.session_manager.database().clone(), &account.user_id);
+
         let credentials = match account
             .session_token
             .and_then(|val| BASE64.decode(val).ok())
@@ -451,7 +457,7 @@ impl Session {
         );
 
         let (player, player_events, auth_data) =
-            match Player::create(credentials, self.call.clone(), device_name).await {
+            match Player::create(credentials, self.call.clone(), device_name, token_provider).await {
                 Ok(player) => player,
                 Err(why) => {
                     if why.kind == ErrorKind::PermissionDenied {
@@ -697,4 +703,19 @@ impl songbird::EventHandler for SessionHandle {
 
         None
     }
+}
+
+/// Build a [`TokenProvider`] that serves (and refreshes) the user's Spotify access token from the database.
+fn make_token_provider(database: Database, user_id: &str) -> TokenProvider {
+    let user_id = user_id.to_string();
+
+    Arc::new(move || {
+        let database = database.clone();
+        let user_id = user_id.clone();
+
+        Box::pin(async move {
+            let (token, ttl) = database.get_access_token_with_ttl(&user_id).await?;
+            Ok((token, ttl))
+        })
+    })
 }
