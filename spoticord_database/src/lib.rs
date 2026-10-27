@@ -141,6 +141,30 @@ impl Database {
         Ok(())
     }
 
+    /// Store reusable librespot credentials together with the Spotify username they belong to.
+    /// The link page may not know the username (Spotify's Web API rate-limits librespot's
+    /// client), so the bot records it after its first successful login.
+    pub async fn update_session_credentials(
+        &self,
+        _user_id: impl AsRef<str>,
+        _session_token: Option<String>,
+        _username: impl AsRef<str>,
+    ) -> Result<()> {
+        use schema::account::dsl::*;
+
+        let mut connection = self.0.get().await?;
+        diesel::update(account)
+            .filter(user_id.eq(_user_id.as_ref()))
+            .set((
+                session_token.eq(_session_token.as_deref()),
+                username.eq(_username.as_ref()),
+            ))
+            .execute(&mut connection)
+            .await?;
+
+        Ok(())
+    }
+
     // Request operations
 
     pub async fn get_request(&self, _user_id: impl AsRef<str>) -> Result<LinkRequest> {
