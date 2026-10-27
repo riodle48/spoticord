@@ -215,7 +215,14 @@ impl Database {
 
             let token = match spotify.refetch_token().await {
                 Ok(Some(token)) => token,
-                _ => {
+                Ok(None) => {
+                    log::error!("Spotify returned no token when refreshing for {}", _user_id.as_ref());
+                    self.delete_account(_user_id.as_ref()).await.ok();
+
+                    return Err(DatabaseError::RefreshTokenFailure);
+                }
+                Err(why) => {
+                    log::error!("Failed to refresh Spotify token for {}: {why}", _user_id.as_ref());
                     self.delete_account(_user_id.as_ref()).await.ok();
 
                     return Err(DatabaseError::RefreshTokenFailure);
