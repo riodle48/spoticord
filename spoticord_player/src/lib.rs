@@ -93,7 +93,13 @@ impl Player {
         // Every attempt gets a fresh Session: Spirc::new registers dealer handlers before
         // logging in, so retrying on the same session fails with "request was already handled".
         let (session, rx_player, rx_sink, spirc, spirc_task) = loop {
-            let session = SpotifySession::new(SessionConfig::default(), None);
+            let session = SpotifySession::new(
+                SessionConfig {
+                    client_id: spoticord_config::spotify_client_id().to_string(),
+                    ..Default::default()
+                },
+                None,
+            );
             let mixer = (mixer::find(Some("softvol")).expect("missing softvol mixer"))(
                 MixerConfig {
                     volume_ctrl: VolumeCtrl::Log(VolumeCtrl::DEFAULT_DB_RANGE),
