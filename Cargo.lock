@@ -5049,6 +5049,7 @@ dependencies = [
  "log",
  "songbird",
  "spoticord_audio",
+ "spoticord_config",
  "spoticord_utils",
  "symphonia",
  "tokio",
