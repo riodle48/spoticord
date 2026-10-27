@@ -133,6 +133,9 @@ impl Player {
                 })
             };
             session.login5().set_token_provider(librespot_provider);
+            session
+                .login5()
+                .set_keymaster_scopes("streaming,user-read-email,user-read-private");
 
             let mixer = (mixer::find(Some("softvol")).expect("missing softvol mixer"))(
                 MixerConfig {
