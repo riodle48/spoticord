@@ -232,13 +232,21 @@ impl Login5Manager {
             }
         }
 
-        if let Some(provider) = provider {
-            let auth_token = provider().await?;
-            self.lock(|inner| inner.auth_token = Some(auth_token.clone()));
-            trace!("Got auth token from external provider");
-            return Ok(auth_token);
+        match self.login5_auth_token().await {
+            Ok(auth_token) => Ok(auth_token),
+            Err(why) => match provider {
+                Some(provider) => {
+                    warn!("login5 token request failed, using external token provider: {why}");
+                    let auth_token = provider().await?;
+                    self.lock(|inner| inner.auth_token = Some(auth_token.clone()));
+                    Ok(auth_token)
+                }
+                None => Err(why),
+            },
         }
+    }
 
+    async fn login5_auth_token(&self) -> Result<Token, Error> {
         let auth_data = self.session().auth_data();
         if auth_data.is_empty() {
             return Err(Login5Error::NoStoredCredentials.into());
