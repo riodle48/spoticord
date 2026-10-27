@@ -4,6 +4,7 @@ version.workspace = true
 edition = "2021"
 
 [dependencies]
+log = "0.4.22"
 spoticord_config = { path = "../spoticord_config" }
 
 diesel = { version = "2.2.4", features = ["chrono"] }
