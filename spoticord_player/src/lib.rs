@@ -87,33 +87,36 @@ impl Player {
         // Free call lock before creating session
         drop(call_lock);
 
-        // Create librespot audio streamer
-        let session = SpotifySession::new(SessionConfig::default(), None);
-        let mixer = (mixer::find(Some("softvol")).expect("missing softvol mixer"))(MixerConfig {
-            volume_ctrl: VolumeCtrl::Log(VolumeCtrl::DEFAULT_DB_RANGE),
-            ..Default::default()
-        })?;
-
-        let (tx_sink, rx_sink) = mpsc::unbounded_channel();
-        let player = SpotifyPlayer::new(
-            PlayerConfig {
-                // 96kbps causes audio key errors, so enjoy the quality upgrade
-                bitrate: Bitrate::Bitrate160,
-                ..Default::default()
-            },
-            session.clone(),
-            mixer.get_soft_volume(),
-            {
-                let stream = stream.clone();
-                move || Box::new(StreamSink::new(stream, tx_sink))
-            },
-        );
-        let rx_player = player.get_player_event_channel();
-
         let device_name = device_name.into();
         let mut tries = 0;
 
-        let (spirc, spirc_task) = loop {
+        // Every attempt gets a fresh Session: Spirc::new registers dealer handlers before
+        // logging in, so retrying on the same session fails with "request was already handled".
+        let (session, rx_player, rx_sink, spirc, spirc_task) = loop {
+            let session = SpotifySession::new(SessionConfig::default(), None);
+            let mixer = (mixer::find(Some("softvol")).expect("missing softvol mixer"))(
+                MixerConfig {
+                    volume_ctrl: VolumeCtrl::Log(VolumeCtrl::DEFAULT_DB_RANGE),
+                    ..Default::default()
+                },
+            )?;
+
+            let (tx_sink, rx_sink) = mpsc::unbounded_channel();
+            let player = SpotifyPlayer::new(
+                PlayerConfig {
+                    // 96kbps causes audio key errors, so enjoy the quality upgrade
+                    bitrate: Bitrate::Bitrate160,
+                    ..Default::default()
+                },
+                session.clone(),
+                mixer.get_soft_volume(),
+                {
+                    let stream = stream.clone();
+                    move || Box::new(StreamSink::new(stream, tx_sink))
+                },
+            );
+            let rx_player = player.get_player_event_channel();
+
             match Spirc::new(
                 ConnectConfig {
                     name: device_name.clone(),
@@ -127,8 +130,14 @@ impl Player {
             )
             .await
             {
-                Ok(spirc) => break spirc,
+                Ok((spirc, spirc_task)) => break (session, rx_player, rx_sink, spirc, spirc_task),
                 Err(why) => {
+                    error!(
+                        "Failed to connect to Spirc (attempt {}): {why} (kind: {:?})",
+                        tries + 1,
+                        why.kind
+                    );
+
                     // Instantly return if our credentials have expired
                     if why.kind == ErrorKind::PermissionDenied {
                         return Err(why);
@@ -136,8 +145,6 @@ impl Player {
 
                     tries += 1;
                     if tries > 3 {
-                        error!("Failed to connect to Spirc: {why}");
-
                         return Err(why);
                     }
 
