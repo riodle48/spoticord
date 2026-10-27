@@ -20,7 +20,7 @@ async fn main() {
         std::env::set_var("RUST_LOG", "spoticord");
 
         #[cfg(not(debug_assertions))]
-        std::env::set_var("RUST_LOG", "spoticord=info");
+        std::env::set_var("RUST_LOG", "spoticord=info,librespot=info");
     }
 
     env_logger::init();
