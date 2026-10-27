@@ -208,6 +208,7 @@ impl Database {
 
         // If the token has expired, refresh it automatically
         if result.expired_offset(Duration::minutes(1)) {
+            let old_refresh_token = result.refresh_token.clone();
             let spotify = spoticord_config::get_spotify(Token {
                 refresh_token: Some(result.refresh_token),
                 ..Default::default()
@@ -233,7 +234,11 @@ impl Database {
                 .filter(user_id.eq(_user_id.as_ref()))
                 .set((
                     access_token.eq(&token.access_token),
-                    refresh_token.eq(token.refresh_token.as_deref().unwrap_or("")),
+                    // PKCE refreshes rotate the refresh token; keep the old one if none came back
+                    refresh_token.eq(token
+                        .refresh_token
+                        .as_deref()
+                        .unwrap_or(&old_refresh_token)),
                     expires.eq(&token
                         .expires_at
                         .expect("token expires_at is none, we broke time")
