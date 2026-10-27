@@ -189,6 +189,14 @@ impl Database {
     /// Retrieve a user's Spotify access token. This token, if expired, will automatically be refreshed
     /// using the refresh token stored in the database. If this succeeds, the access token will be updated.
     pub async fn get_access_token(&self, _user_id: impl AsRef<str>) -> Result<String> {
+        Ok(self.get_access_token_with_ttl(_user_id).await?.0)
+    }
+
+    /// Like [`Self::get_access_token`], but also returns how long the token remains valid.
+    pub async fn get_access_token_with_ttl(
+        &self,
+        _user_id: impl AsRef<str>,
+    ) -> Result<(String, std::time::Duration)> {
         use schema::account::dsl::*;
 
         let mut connection = self.0.get().await?;
@@ -229,6 +237,10 @@ impl Database {
                 .await?;
         }
 
-        Ok(result.access_token)
+        let ttl = (result.expires - Utc::now().naive_utc())
+            .to_std()
+            .unwrap_or_default();
+
+        Ok((result.access_token, ttl))
     }
 }
