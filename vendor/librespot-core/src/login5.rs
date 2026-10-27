@@ -39,8 +39,12 @@ component! {
     Login5Manager : Login5ManagerInner {
         auth_token: Option<Token> = None,
         token_provider: Option<ExternalTokenProvider> = None,
+        keymaster_scopes: Option<String> = None,
     }
 }
+
+/// Spotify's own "keymaster" client ID, used by librespot for mercury token requests.
+const KEYMASTER_CLIENT_ID: &str = "65b708073fc0480ea92a077233ca87bd";
 
 #[derive(Debug, Error)]
 enum Login5Error {
@@ -184,18 +188,48 @@ impl Login5Manager {
         });
     }
 
+    /// Before falling back to an external provider or login5, try to obtain a token for
+    /// Spotify's own keymaster client via the (already authenticated) mercury session.
+    /// This is how librespot acquired spclient tokens before login5 existed.
+    pub fn set_keymaster_scopes(&self, scopes: impl Into<String>) {
+        self.lock(|inner| {
+            inner.keymaster_scopes = Some(scopes.into());
+            inner.auth_token = None;
+        });
+    }
+
     pub async fn auth_token(&self) -> Result<Token, Error> {
-        let (auth_token, provider) = self.lock(|inner| {
+        let (auth_token, provider, keymaster_scopes) = self.lock(|inner| {
             if let Some(token) = &inner.auth_token {
                 if token.is_expired() {
                     inner.auth_token = None;
                 }
             }
-            (inner.auth_token.clone(), inner.token_provider.clone())
+            (
+                inner.auth_token.clone(),
+                inner.token_provider.clone(),
+                inner.keymaster_scopes.clone(),
+            )
         });
 
         if let Some(auth_token) = auth_token {
             return Ok(auth_token);
+        }
+
+        if let Some(scopes) = keymaster_scopes {
+            match self
+                .session()
+                .token_provider()
+                .get_token_with_client_id(&scopes, KEYMASTER_CLIENT_ID)
+                .await
+            {
+                Ok(auth_token) => {
+                    self.lock(|inner| inner.auth_token = Some(auth_token.clone()));
+                    info!("Got auth token via keymaster");
+                    return Ok(auth_token);
+                }
+                Err(why) => warn!("Keymaster token request failed, falling back: {why}"),
+            }
         }
 
         if let Some(provider) = provider {
