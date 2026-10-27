@@ -104,15 +104,11 @@ impl Player {
         // Every attempt gets a fresh Session: Spirc::new registers dealer handlers before
         // logging in, so retrying on the same session fails with "request was already handled".
         let (session, rx_player, rx_sink, spirc, spirc_task) = loop {
-            let session = SpotifySession::new(
-                SessionConfig {
-                    client_id: spoticord_config::spotify_client_id().to_string(),
-                    ..Default::default()
-                },
-                None,
-            );
+            // Users authenticate through librespot's own client ID (see spoticord_config), so the
+            // default SessionConfig (same client ID) is what Spotify's login5 expects.
+            let session = SpotifySession::new(SessionConfig::default(), None);
 
-            // Hand librespot our own access tokens so it never has to call login5
+            // Fallback token source for librespot if login5 fails
             let librespot_provider: ExternalTokenProvider = {
                 let token_provider = token_provider.clone();
                 Arc::new(move || {
@@ -132,10 +128,8 @@ impl Player {
                     })
                 })
             };
+            // Only used if login5 fails; our stored token was issued to the same client ID.
             session.login5().set_token_provider(librespot_provider);
-            session
-                .login5()
-                .set_keymaster_scopes("streaming,user-read-email,user-read-private");
 
             let mixer = (mixer::find(Some("softvol")).expect("missing softvol mixer"))(
                 MixerConfig {
