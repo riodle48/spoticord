@@ -162,7 +162,7 @@ impl Session {
             call.add_global_event(Event::Core(CoreEvent::ClientDisconnect), handle.clone());
         }
 
-        let (player, events, auth_data) =
+        let (player, events, auth_data, spotify_username) =
             match Player::create(credentials, call.clone(), device_name, token_provider).await {
                 Ok(player) => player,
                 Err(why) => {
@@ -199,7 +199,11 @@ impl Session {
         // We don't care if this fails, we'll just fall back on token login
         session_manager
             .database()
-            .update_session_token(owner.to_string(), Some(BASE64.encode(auth_data)))
+            .update_session_credentials(
+                owner.to_string(),
+                Some(BASE64.encode(auth_data)),
+                &spotify_username,
+            )
             .await
             .ok();
 
@@ -456,7 +460,7 @@ impl Session {
             AuthenticationType::AUTHENTICATION_STORED_SPOTIFY_CREDENTIALS
         );
 
-        let (player, player_events, auth_data) =
+        let (player, player_events, auth_data, spotify_username) =
             match Player::create(credentials, self.call.clone(), device_name, token_provider).await {
                 Ok(player) => player,
                 Err(why) => {
@@ -486,7 +490,11 @@ impl Session {
         // We don't care if this fails, we'll just fall back on token login
         self.session_manager
             .database()
-            .update_session_token(user_id, Some(BASE64.encode(auth_data)))
+            .update_session_credentials(
+                user_id,
+                Some(BASE64.encode(auth_data)),
+                &spotify_username,
+            )
             .await
             .ok();
 
