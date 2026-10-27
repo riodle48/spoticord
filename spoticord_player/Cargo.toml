@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+spoticord_config = { path = "../spoticord_config" }
 spoticord_audio = { path = "../spoticord_audio" }
 spoticord_utils = { path = "../spoticord_utils" }
 
