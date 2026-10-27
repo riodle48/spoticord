@@ -5,7 +5,8 @@ use info::PlaybackInfo;
 use librespot::{
     connect::{ConnectConfig, Spirc},
     core::{
-        error::ErrorKind, http_client::HttpClientError, Session as SpotifySession, SessionConfig,
+        error::ErrorKind, http_client::HttpClientError, login5::ExternalTokenProvider,
+        token::Token, Session as SpotifySession, SessionConfig,
     },
     discovery::Credentials,
     metadata::Lyrics,
@@ -22,10 +23,19 @@ use spoticord_audio::{
     stream::Stream,
 };
 use std::{
+    future::Future,
     io::Write,
+    pin::Pin,
     sync::{atomic::AtomicBool, Arc},
+    time::{Duration, SystemTime},
 };
 use tokio::sync::{mpsc, oneshot, Mutex};
+
+/// Supplies a fresh Spotify Web API access token (with the `streaming` scope) and the time
+/// until it expires. Used instead of librespot's login5, which rejects third-party client IDs.
+pub type TokenProvider = Arc<
+    dyn Fn() -> Pin<Box<dyn Future<Output = Result<(String, Duration)>> + Send>> + Send + Sync,
+>;
 
 #[derive(Debug)]
 enum PlayerCommand {
@@ -73,6 +83,7 @@ impl Player {
         credentials: Credentials,
         call: Arc<Mutex<Call>>,
         device_name: impl Into<String>,
+        token_provider: TokenProvider,
     ) -> Result<(PlayerHandle, mpsc::Receiver<PlayerEvent>, Vec<u8>), librespot::core::Error> {
         let (event_tx, event_rx) = mpsc::channel(16);
 
@@ -100,6 +111,29 @@ impl Player {
                 },
                 None,
             );
+
+            // Hand librespot our own access tokens so it never has to call login5
+            let librespot_provider: ExternalTokenProvider = {
+                let token_provider = token_provider.clone();
+                Arc::new(move || {
+                    let fut = token_provider();
+                    Box::pin(async move {
+                        let (access_token, expires_in) = fut
+                            .await
+                            .map_err(|why| librespot::core::Error::unavailable(why))?;
+
+                        Ok(Token {
+                            access_token,
+                            expires_in,
+                            token_type: "Bearer".to_string(),
+                            scopes: vec!["streaming".to_string()],
+                            timestamp: SystemTime::now(),
+                        })
+                    })
+                })
+            };
+            session.login5().set_token_provider(librespot_provider);
+
             let mixer = (mixer::find(Some("softvol")).expect("missing softvol mixer"))(
                 MixerConfig {
                     volume_ctrl: VolumeCtrl::Log(VolumeCtrl::DEFAULT_DB_RANGE),
