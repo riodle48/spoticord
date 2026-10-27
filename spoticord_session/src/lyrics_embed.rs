@@ -31,7 +31,7 @@ pub struct LyricsEmbed {
     ctx: Context,
     session: SessionHandle,
     message: Message,
-    track: SpotifyId,
+    track: Option<SpotifyId>,
 
     lyrics: Option<Lyrics>,
     page: usize,
